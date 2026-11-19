@@ -2,7 +2,7 @@ name: ozbargain-deals
 prefect-version: 3.0.0
 
 deployments:
-  - name: ozbargain-deals-docker
+  - name: ozbargain-latest-deals
     version: null
     tags: ["ozbargain", "notifications"]
     description: Fetch the OzBargain feed and notify for unseen entry versions.
@@ -10,7 +10,7 @@ deployments:
     parameters: {}
 
     work_pool:
-      name: docker-work-pool
+      name: deals
       work_queue_name: default
 
     schedules:
