@@ -1,0 +1,104 @@
+env:
+  UV_VERSION: "0.5.14"
+
+steps:
+  - group: "CI"
+    if: build.source != "schedule"
+    steps:
+      - label: "Lint"
+        key: lint
+        command: |
+          set -euo pipefail
+          curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv sync --locked
+          uv run pre-commit run --all-files --show-diff-on-failure
+
+      - label: "Tests"
+        key: test
+        command: |
+          set -euo pipefail
+          curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv sync --locked
+          uv run pytest
+
+  - label: "Build and push Docker image"
+    key: docker
+    if: build.branch == "main" && build.source != "schedule" && build.source != "ui"
+    depends_on:
+      - lint
+      - test
+    command: |
+      set -euo pipefail
+
+      export REGISTRY_IMAGE="$(buildkite-agent secret get REGISTRY_IMAGE)"
+      export GHCR_USERNAME="$(buildkite-agent secret get GHCR_USERNAME)"
+      export GHCR_TOKEN="$(buildkite-agent secret get GHCR_TOKEN)"
+
+      echo "$GHCR_TOKEN" | docker login ghcr.io \
+        --username "$GHCR_USERNAME" \
+        --password-stdin
+
+      docker build \
+        --platform linux/amd64 \
+        --tag "$REGISTRY_IMAGE:$BUILDKITE_COMMIT" \
+        --tag "$REGISTRY_IMAGE:latest" \
+        .
+
+      docker push "$REGISTRY_IMAGE:$BUILDKITE_COMMIT"
+      docker push "$REGISTRY_IMAGE:latest"
+
+  - label: "Deploy Prefect Docker deployment"
+    key: prefect-deploy
+    if: build.branch == "main" && build.source != "schedule" && build.source != "ui"
+    depends_on:
+      - docker
+    command: |
+      set -euo pipefail
+
+      curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+      export PATH="$HOME/.local/bin:$PATH"
+      uv sync --locked
+
+      export PREFECT_API_URL="$(buildkite-agent secret get PREFECT_API_URL)"
+      export PREFECT_API_KEY="$(buildkite-agent secret get PREFECT_API_KEY)"
+      export REGISTRY_IMAGE="$(buildkite-agent secret get REGISTRY_IMAGE)"
+      export DEPLOY_IMAGE="$REGISTRY_IMAGE:$BUILDKITE_COMMIT"
+
+      uv run prefect deploy \
+        --prefect-file prefect.yaml \
+        --name ozbargain-deals-docker \
+        --job-variable "image=$DEPLOY_IMAGE" \
+        --job-variable 'volumes=["ozbargain-data:/app/data"]'
+
+  - label: "Deal check"
+    key: deals
+    if: build.source == "schedule" || build.source == "ui"
+    concurrency: 1
+    concurrency_group: "ozbargain-deal-history"
+    command: |
+      set -euo pipefail
+
+      curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+      export PATH="$HOME/.local/bin:$PATH"
+      uv sync --locked
+
+      export WEBHOOK_URL="$(buildkite-agent secret get WEBHOOK_URL)"
+      uv run python -m flows.ozbargain.latest_deals
+
+      git config user.name "buildkite[bot]"
+      git config user.email "buildkite[bot]@users.noreply.github.com"
+
+      git add data/history.csv
+      if git diff --cached --quiet; then
+        echo "No new history to commit"
+      else
+        git diff --cached --stat
+        git commit -m "Update deal history [skip ci]"
+        git fetch origin "$BUILDKITE_BRANCH"
+        git rebase "origin/$BUILDKITE_BRANCH"
+        git push origin "HEAD:$BUILDKITE_BRANCH"
+      fi
+    artifact_paths:
+      - "data/history.csv"

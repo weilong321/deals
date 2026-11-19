@@ -4,11 +4,36 @@ import pytest
 from client.ozbargain.ozbargain import BASE_URL, DEALS_FEED_PATH, OzBargainClient
 
 RSS = b"""<?xml version="1.0"?>
-<rss version="2.0"><channel><title>OzBargain</title>
+<rss version="2.0" xml:base="https://www.ozbargain.com.au"
+ xmlns:atom="http://www.w3.org/2005/Atom"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:media="http://search.yahoo.com/mrss/"
+ xmlns:ozb="https://www.ozbargain.com.au">
+<channel>
+  <title>OzBargain</title>
+  <link>https://www.ozbargain.com.au/deals/feed</link>
+<description></description><language>en</language>
+<atom:link
+  href="https://www.ozbargain.com.au/deals/feed"
+  rel="self"
+  type="application/rss+xml" />
 <item>
   <title>Switch OLED $299 @ Amazon</title>
   <link>http://example.com/deal</link>
+  <description><![CDATA[<p>Deal</p>]]></description>
+  <comments>http://example.com/deal#comment</comments>
+  <category domain="https://www.ozbargain.com.au/cat/gaming">Gaming</category>
+  <ozb:meta
+    comment-count="0"
+    link="https://www.ozbargain.com.au/goto/1"
+    click-count="1"
+    votes-pos="1"
+    votes-neg="0"
+    url="http://example.com/deal" />
+  <media:thumbnail url="https://example.com/image.jpg" />
   <pubDate>Mon, 01 Jan 2026 00:00:00 +0000</pubDate>
+  <dc:creator>tester</dc:creator>
+  <guid isPermaLink="false">1 at https://www.ozbargain.com.au</guid>
 </item>
 </channel></rss>"""
 
@@ -60,9 +85,7 @@ def test_retries_network_errors_then_succeeds():
 
 
 def test_retries_5xx():
-    client, seen = make_client(
-        httpx.Response(503), httpx.Response(200, content=RSS)
-    )
+    client, seen = make_client(httpx.Response(503), httpx.Response(200, content=RSS))
     assert len(client.get_latest_deals()) == 1
     assert len(seen) == 2
 

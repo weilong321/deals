@@ -1,18 +1,68 @@
-from flows.ozbargain.latest_deals import parse_price, match_deals, best_deal
-from schema.ozbargain.latest_deals import FeedEntrySchema
+import csv
+from datetime import datetime
+
+import msgspec
+
+from client.ozbargain.spec import FeedEntry
+from flows.ozbargain.latest_deals import (
+    HISTORY_COLUMNS,
+    entry_hash,
+    log_feed,
+    process_feed,
+)
 
 
-def test_parse_price():
-    assert parse_price("Nintendo Switch OLED $299 @ Amazon") == 299.0
-    assert parse_price("Free shipping") is None
+def make_entry(title: str, guid: str) -> FeedEntry:
+    return FeedEntry(
+        title=title,
+        link=f"https://example.com/{guid}",
+        published=datetime(2026, 1, 1),
+        description="A deal",
+        comments="https://example.com/comments",
+        creator="tester",
+        categories=["Gaming"],
+        category_domains=["https://example.com/cat/gaming"],
+        comment_count=1,
+        meta_link="https://example.com/goto",
+        click_count=10,
+        expiry=None,
+        starting=None,
+        votes_pos=2,
+        votes_neg=0,
+        deal_url="https://example.com/deal",
+        image="https://example.com/image.jpg",
+        thumbnail_urls=["https://example.com/thumb.jpg"],
+        title_message_types=["expired"],
+        title_message_texts=["expired"],
+        guid=guid,
+        is_perma_link=False,
+        price=299.0,
+    )
 
 
-def test_match_and_best():
-    entries = [
-        FeedEntrySchema(title="Switch OLED $349 @ A", link="http://a", published=""),
-        FeedEntrySchema(title="Switch OLED $299 @ B", link="http://b", published=""),
-        FeedEntrySchema(title="Unrelated $5", link="http://c", published=""),
-    ]
-    found = match_deals(entries, "switch oled")
-    assert len(found) == 2
-    assert best_deal(found)["link"] == "http://b"
+def test_log_feed_hashes_complete_entries(tmp_path):
+    history = tmp_path / "history.csv"
+    entries = [make_entry("Deal A", "1")]
+
+    unseen = log_feed(entries, history)
+
+    assert unseen == entries
+    assert len(entry_hash(entries[0])) == 64
+
+    unseen_again = process_feed(entries, history)
+
+    assert unseen_again == []
+
+    changed = msgspec.structs.replace(entries[0], click_count=11)
+    updated = log_feed([changed], history)
+
+    assert updated == [changed]
+
+    with history.open(newline="") as history_file:
+        reader = csv.DictReader(history_file)
+        assert reader.fieldnames == HISTORY_COLUMNS
+        rows = list(reader)
+
+    assert len(rows) == 2
+    assert rows[0]["sha256"] == entry_hash(entries[0])
+    assert rows[1]["sha256"] == entry_hash(changed)

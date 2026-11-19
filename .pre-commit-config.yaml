@@ -36,6 +36,8 @@ repos:
     hooks:
       - id: mypy
         args: ["--ignore-missing-imports"]
+        additional_dependencies:
+          - "msgspec>=0.22.0"
 
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.5.14

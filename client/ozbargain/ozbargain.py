@@ -1,15 +1,8 @@
-"""Thin client for OzBargain's public RSS feeds.
-
-This module only knows how to talk to OzBargain: make the request, parse the
-feed, and hand back plain objects. Matching, price parsing, storage and
-notifications live elsewhere.
-"""
+"""Thin HTTP client for OzBargain's public RSS feeds."""
 
 import logging
 
-import feedparser
 import httpx
-import msgspec
 from prefect.logging import get_logger
 from tenacity import (
     before_sleep_log,
@@ -18,6 +11,10 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential_jitter,
 )
+from typing_extensions import Self
+
+from client.ozbargain.spec import FeedEntry
+from parsers.ozbargain.latest_deals import parse_entries
 
 logger = get_logger(__name__)
 
@@ -45,12 +42,6 @@ retry_transient = retry(
 )
 
 
-class FeedEntry(msgspec.Struct, frozen=True):
-    title: str
-    link: str
-    published: str | None = None
-
-
 class OzBargainClient:
     def __init__(
         self,
@@ -58,7 +49,6 @@ class OzBargainClient:
         timeout: float = 15.0,
         client: httpx.Client | None = None,
     ) -> None:
-        # An injected client is used as-is (handy for tests with MockTransport).
         self._client = client or httpx.Client(
             base_url=BASE_URL,
             headers={"User-Agent": user_agent},
@@ -66,7 +56,7 @@ class OzBargainClient:
             follow_redirects=True,
         )
 
-    def __enter__(self) -> "OzBargainClient":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -81,11 +71,21 @@ class OzBargainClient:
 
     @retry_transient
     def get_feed(self, path: str) -> list[FeedEntry]:
-        """Fetch any OzBargain feed by path, e.g. a tag or category feed."""
+        """Fetch and parse any OzBargain feed by path."""
         resp = self._client.get(path)
         resp.raise_for_status()
-        parsed = feedparser.parse(resp.content)
-        return [msgspec.convert(dict(entry), FeedEntry) for entry in parsed.entries]
+        return parse_entries(resp.content)
+
+    @retry_transient
+    def get_feed_content(self, path: str) -> bytes:
+        """Fetch raw feed content without parsing or validation."""
+        resp = self._client.get(path)
+        resp.raise_for_status()
+        return resp.content
+
+    def get_latest_deals_content(self) -> bytes:
+        """Fetch raw content from the main OzBargain feed."""
+        return self.get_feed_content(DEALS_FEED_PATH)
 
 
 if __name__ == "__main__":
@@ -93,4 +93,3 @@ if __name__ == "__main__":
     latest_deals = client.get_latest_deals()
     for item in latest_deals:
         print(item.title)
-    

@@ -1,0 +1,1 @@
+"""OzBargain raw feed schemas."""
