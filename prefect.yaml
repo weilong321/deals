@@ -1,0 +1,19 @@
+name: ozbargain-deals
+prefect-version: 3.0.0
+
+deployments:
+  - name: ozbargain-latest-deals
+    version: null
+    tags: ["ozbargain", "notifications"]
+    description: Fetch the OzBargain feed and notify for unseen entry versions.
+    entrypoint: flows/ozbargain/latest_deals.py:deals_flow
+    parameters: {}
+
+    work_pool:
+      name: deals
+      work_queue_name: default
+
+    schedules:
+      - cron: "*/15 * * * *"
+        timezone: "Australia/Sydney"
+        active: true

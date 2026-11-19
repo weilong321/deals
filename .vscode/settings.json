@@ -1,0 +1,10 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "pytest": true,
+        "/^cd \"C:\\\\Users\\\\Matthew Chen\\\\Desktop\\\\deals\"; & \"c:/Users/Matthew Chen/Desktop/deals/\\.venv/Scripts/python\\.exe\" -m pytest -q; & \"c:/Users/Matthew Chen/Desktop/deals/\\.venv/Scripts/python\\.exe\" -m ruff check schema/ozbargain/latest_deals\\.py client/ozbargain/spec\\.py parsers/ozbargain/latest_deals\\.py client/ozbargain/ozbargain\\.py flows/ozbargain/latest_deals\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "&": true
+    }
+}
