@@ -25,16 +25,31 @@ steps:
 
   - label: "Build and push Docker image"
     key: docker
-    if: build.branch == "main" && build.source != "schedule" && build.source != "ui"
+    if: build.source != "schedule"
     depends_on:
       - lint
       - test
     command: |
       set -euo pipefail
 
-      export REGISTRY_IMAGE="$(buildkite-agent secret get REGISTRY_IMAGE)"
-      export GHCR_USERNAME="$(buildkite-agent secret get GHCR_USERNAME)"
-      export GHCR_TOKEN="$(buildkite-agent secret get GHCR_TOKEN)"
+      required_secret() {
+        local name="$1"
+        if [[ -n "${!name:-}" ]]; then
+          return
+        fi
+
+        if ! value="$(buildkite-agent secret get "$name")"; then
+          echo "Missing Buildkite secret: $name"
+          echo "Create it in Buildkite Secrets, then retry the build."
+          exit 1
+        fi
+        printf -v "$name" '%s' "$value"
+        export "$name"
+      }
+
+      required_secret REGISTRY_IMAGE
+      required_secret GHCR_USERNAME
+      required_secret GHCR_TOKEN
 
       echo "$GHCR_TOKEN" | docker login ghcr.io \
         --username "$GHCR_USERNAME" \
@@ -43,15 +58,18 @@ steps:
       docker build \
         --platform linux/amd64 \
         --tag "$REGISTRY_IMAGE:$BUILDKITE_COMMIT" \
-        --tag "$REGISTRY_IMAGE:latest" \
         .
 
       docker push "$REGISTRY_IMAGE:$BUILDKITE_COMMIT"
-      docker push "$REGISTRY_IMAGE:latest"
+
+      if [[ "$BUILDKITE_BRANCH" == "main" ]]; then
+        docker tag "$REGISTRY_IMAGE:$BUILDKITE_COMMIT" "$REGISTRY_IMAGE:latest"
+        docker push "$REGISTRY_IMAGE:latest"
+      fi
 
   - label: "Deploy Prefect Docker deployment"
     key: prefect-deploy
-    if: build.branch == "main" && build.source != "schedule" && build.source != "ui"
+    if: build.source != "schedule"
     depends_on:
       - docker
     command: |
@@ -61,14 +79,29 @@ steps:
       export PATH="$HOME/.local/bin:$PATH"
       uv sync --locked
 
-      export PREFECT_API_URL="$(buildkite-agent secret get PREFECT_API_URL)"
-      export PREFECT_API_KEY="$(buildkite-agent secret get PREFECT_API_KEY)"
-      export REGISTRY_IMAGE="$(buildkite-agent secret get REGISTRY_IMAGE)"
+      required_secret() {
+        local name="$1"
+        if [[ -n "${!name:-}" ]]; then
+          return
+        fi
+
+        if ! value="$(buildkite-agent secret get "$name")"; then
+          echo "Missing Buildkite secret: $name"
+          echo "Create it in Buildkite Secrets, then retry the build."
+          exit 1
+        fi
+        printf -v "$name" '%s' "$value"
+        export "$name"
+      }
+
+      required_secret PREFECT_API_URL
+      required_secret PREFECT_API_KEY
+      required_secret REGISTRY_IMAGE
       export DEPLOY_IMAGE="$REGISTRY_IMAGE:$BUILDKITE_COMMIT"
 
       uv run prefect deploy \
         --prefect-file prefect.yaml \
-        --name ozbargain-deals-docker \
+        --name ozbargain-latest-deals \
         --job-variable "image=$DEPLOY_IMAGE" \
         --job-variable 'volumes=["ozbargain-data:/app/data"]'
 
@@ -84,7 +117,23 @@ steps:
       export PATH="$HOME/.local/bin:$PATH"
       uv sync --locked
 
-      export WEBHOOK_URL="$(buildkite-agent secret get WEBHOOK_URL)"
+      required_secret() {
+        local name="$1"
+        if [[ -n "${!name:-}" ]]; then
+          return
+        fi
+
+        if ! value="$(buildkite-agent secret get "$name")"; then
+          echo "Missing Buildkite secret: $name"
+          echo "Create it in Buildkite Secrets, then retry the build."
+          exit 1
+        fi
+        printf -v "$name" '%s' "$value"
+        export "$name"
+      }
+
+      required_secret WEBHOOK_URL
+
       uv run python -m flows.ozbargain.latest_deals
 
       git config user.name "buildkite[bot]"
