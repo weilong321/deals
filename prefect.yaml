@@ -8,11 +8,26 @@ deployments:
     description: Fetch the OzBargain feed and notify for unseen entry versions.
     entrypoint: flows/ozbargain/latest_deals.py:deals_flow
     parameters: {}
-    pull: []
+    pull:
+      - prefect.deployments.steps.git_clone:
+          id: clone
+          repository: https://github.com/weilong321/deals.git
+          branch: main
+          access_token: "{{ prefect.blocks.secret.ozbargain-github-token }}"
+          clone_directory_name: deals
+      - prefect.deployments.steps.run_shell_script:
+          script: python -m pip install .
+          directory: "{{ clone.directory }}"
+      - prefect.deployments.steps.set_working_directory:
+          directory: "{{ clone.directory }}"
 
     work_pool:
       name: deals-docker
       work_queue_name: default
+      job_variables:
+        image: prefecthq/prefect:3-python3.12
+
+    concurrency_limit: 1
 
     schedules:
       - cron: "*/15 * * * *"

@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 import msgspec
 from prefect import flow, get_run_logger, task
+from prefect.variables import Variable
 
 from client.ozbargain.ozbargain import OzBargainClient
 from client.ozbargain.spec import FeedEntry
@@ -17,6 +18,8 @@ __all__ = ["process_feed", "log_feed", "entry_hash"]
 
 HISTORY_PATH = Path("data/history.csv")
 HISTORY_COLUMNS = ["alerted_at", "sha256"]
+HISTORY_VARIABLE = "ozbargain-history-hashes"
+HISTORY_HASH_LIMIT = 70
 
 
 def entry_hash(entry: FeedEntry) -> str:
@@ -39,6 +42,35 @@ def load_seen_entries(history_path: Path = HISTORY_PATH) -> set[str]:
             if digest:
                 seen.add(digest)
     return seen
+
+
+def load_recent_history_hashes(history_path: Path = HISTORY_PATH) -> list[str]:
+    if not history_path.exists():
+        return []
+
+    with history_path.open(newline="") as history:
+        reader = csv.DictReader(history)
+        if "sha256" not in (reader.fieldnames or []):
+            return []
+        hashes = [row["sha256"] for row in reader if row.get("sha256")]
+    return hashes[-HISTORY_HASH_LIMIT:]
+
+
+def log_feed_with_history(
+    entries: list[FeedEntry], history_hashes: list[str]
+) -> tuple[list[FeedEntry], list[str]]:
+    recent_hashes = list(dict.fromkeys(history_hashes))
+    seen = set(recent_hashes)
+    unseen: list[FeedEntry] = []
+
+    for entry in entries:
+        digest = entry_hash(entry)
+        if digest not in seen:
+            unseen.append(entry)
+            recent_hashes.append(digest)
+            seen.add(digest)
+
+    return unseen, recent_hashes[-HISTORY_HASH_LIMIT:]
 
 
 def log_feed(
@@ -115,7 +147,21 @@ def fetch_entries() -> list[FeedEntry]:
 
 @task
 def record_feed(entries: list[FeedEntry]) -> list[FeedEntry]:
-    return log_feed(entries)
+    history = Variable.get(HISTORY_VARIABLE, default=None)
+    history_hashes = (
+        history.splitlines() if history is not None else load_recent_history_hashes()
+    )
+    unseen, updated_hashes = log_feed_with_history(entries, history_hashes)
+    updated_history = "\n".join(updated_hashes)
+
+    if history is None or updated_history != history:
+        Variable.set(
+            HISTORY_VARIABLE,
+            updated_history,
+            overwrite=history is not None,
+        )
+
+    return unseen
 
 
 @flow(name="ozbargain-deals", log_prints=True)

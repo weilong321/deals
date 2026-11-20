@@ -8,6 +8,7 @@ from flows.ozbargain.latest_deals import (
     HISTORY_COLUMNS,
     entry_hash,
     log_feed,
+    log_feed_with_history,
     process_feed,
 )
 
@@ -66,3 +67,19 @@ def test_log_feed_hashes_complete_entries(tmp_path):
     assert len(rows) == 2
     assert rows[0]["sha256"] == entry_hash(entries[0])
     assert rows[1]["sha256"] == entry_hash(changed)
+
+
+def test_log_feed_with_history_deduplicates_and_bounds_history():
+    entries = [make_entry("Deal A", "1"), make_entry("Deal B", "2")]
+    previous_hashes = [f"{index:064x}" for index in range(70)]
+
+    unseen, updated_hashes = log_feed_with_history(entries, previous_hashes)
+
+    assert unseen == entries
+    assert len(updated_hashes) == 70
+    assert updated_hashes[-2:] == [entry_hash(entry) for entry in entries]
+
+    unseen_again, unchanged_hashes = log_feed_with_history(entries, updated_hashes)
+
+    assert unseen_again == []
+    assert unchanged_hashes == updated_hashes

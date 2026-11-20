@@ -2,60 +2,27 @@ env:
   UV_VERSION: "0.5.14"
 
 steps:
-  - label: "Pre-commit and tests"
+  - label: "Pre-commit, tests, and deploy"
     key: validate
     command: |
       set -euo pipefail
-
-      SOURCE_COMMIT="$(git rev-parse HEAD)"
-      buildkite-agent meta-data set "source-commit" "$$SOURCE_COMMIT"
 
       curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
       export PATH="$$HOME/.local/bin:$$PATH"
       uv sync --locked
       uv run pre-commit run --all-files --show-diff-on-failure
       uv run pytest
-
-  - label: "Build image from branch commit"
-    key: buildimage
-    depends_on: validate
-    command: |
-      set -euo pipefail
-
-      REGISTRY_IMAGE="$(buildkite-agent secret get REGISTRY_IMAGE)"
-      GHCR_USERNAME="$(buildkite-agent secret get GHCR_USERNAME)"
-      GHCR_TOKEN="$(buildkite-agent secret get GHCR_TOKEN)"
-      PREFECT_API_URL="$(buildkite-agent secret get PREFECT_API_URL)"
-      PREFECT_API_KEY="$(buildkite-agent secret get PREFECT_API_KEY)"
-
-      if [ -z "$$REGISTRY_IMAGE" ] || [ -z "$$GHCR_USERNAME" ] || [ -z "$$GHCR_TOKEN" ] || [ -z "$$PREFECT_API_URL" ] || [ -z "$$PREFECT_API_KEY" ]; then
-        echo "REGISTRY_IMAGE, GHCR_USERNAME, GHCR_TOKEN, PREFECT_API_URL, and PREFECT_API_KEY must be configured as Buildkite secrets."
-        exit 1
-      fi
-
-      SOURCE_COMMIT="$(buildkite-agent meta-data get "source-commit")"
-
-      echo "$$GHCR_TOKEN" | docker login ghcr.io \
-        --username "$$GHCR_USERNAME" \
-        --password-stdin
-
-      set -- \
-        --platform linux/amd64 \
-        --push \
-        --tag "$$REGISTRY_IMAGE:$$SOURCE_COMMIT"
       if [ "$$BUILDKITE_BRANCH" = "main" ]; then
-        set -- "$$@" --tag "$$REGISTRY_IMAGE:latest"
-      fi
+        PREFECT_API_URL="$(buildkite-agent secret get PREFECT_API_URL)"
+        PREFECT_API_KEY="$(buildkite-agent secret get PREFECT_API_KEY)"
+        if [ -z "$$PREFECT_API_URL" ] || [ -z "$$PREFECT_API_KEY" ]; then
+          echo "PREFECT_API_URL and PREFECT_API_KEY must be configured as Buildkite secrets."
+          exit 1
+        fi
 
-      git archive --format=tar "$$SOURCE_COMMIT" | docker buildx build "$$@" -
-      DEPLOY_IMAGE="$$REGISTRY_IMAGE:$$SOURCE_COMMIT"
-      export PREFECT_API_URL PREFECT_API_KEY
-      docker run --rm --platform linux/amd64 \
-        --env PREFECT_API_URL \
-        --env PREFECT_API_KEY \
-        "$$DEPLOY_IMAGE" prefect deploy \
-        --no-prompt \
-        --prefect-file /app/prefect.yaml \
-        --name ozbargain-latest-deals \
-        --job-variable "image=$$DEPLOY_IMAGE" \
-        --job-variable 'volumes=["ozbargain-data:/app/data"]'
+        export PREFECT_API_URL PREFECT_API_KEY
+        uv run prefect deploy \
+          --no-prompt \
+          --prefect-file prefect.yaml \
+          --name ozbargain-latest-deals
+      fi
