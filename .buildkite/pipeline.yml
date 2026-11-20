@@ -9,11 +9,11 @@ steps:
 
       git fetch origin main
       MAIN_COMMIT="$(git rev-parse FETCH_HEAD)"
-      git checkout --detach "$MAIN_COMMIT"
-      buildkite-agent meta-data set "main-commit" "$MAIN_COMMIT"
+      git checkout --detach "$$MAIN_COMMIT"
+      buildkite-agent meta-data set "main-commit" "$$MAIN_COMMIT"
 
       curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
-      export PATH="$HOME/.local/bin:$PATH"
+      export PATH="$$HOME/.local/bin:$$PATH"
       uv sync --locked
       uv run pre-commit run --all-files --show-diff-on-failure
       uv run pytest
@@ -28,26 +28,26 @@ steps:
       GHCR_USERNAME="$(buildkite-agent secret get GHCR_USERNAME)"
       GHCR_TOKEN="$(buildkite-agent secret get GHCR_TOKEN)"
 
-      if [ -z "$REGISTRY_IMAGE" ] || [ -z "$GHCR_USERNAME" ] || [ -z "$GHCR_TOKEN" ]; then
+      if [ -z "$$REGISTRY_IMAGE" ] || [ -z "$$GHCR_USERNAME" ] || [ -z "$$GHCR_TOKEN" ]; then
         echo "REGISTRY_IMAGE, GHCR_USERNAME, and GHCR_TOKEN must be configured as Buildkite secrets."
         exit 1
       fi
 
       MAIN_COMMIT="$(buildkite-agent meta-data get "main-commit")"
 
-      echo "$GHCR_TOKEN" | docker login ghcr.io \
-        --username "$GHCR_USERNAME" \
+      echo "$$GHCR_TOKEN" | docker login ghcr.io \
+        --username "$$GHCR_USERNAME" \
         --password-stdin
 
-      git archive --format=tar "$MAIN_COMMIT" | docker build \
+      git archive --format=tar "$$MAIN_COMMIT" | docker build \
         --platform linux/amd64 \
-        --tag "$REGISTRY_IMAGE:$MAIN_COMMIT" \
-        --tag "$REGISTRY_IMAGE:latest" \
+        --tag "$$REGISTRY_IMAGE:$$MAIN_COMMIT" \
+        --tag "$$REGISTRY_IMAGE:latest" \
         -
 
-      docker push "$REGISTRY_IMAGE:$MAIN_COMMIT"
-      docker push "$REGISTRY_IMAGE:latest"
-      buildkite-agent meta-data set "main-commit" "$MAIN_COMMIT"
+      docker push "$$REGISTRY_IMAGE:$$MAIN_COMMIT"
+      docker push "$$REGISTRY_IMAGE:latest"
+      buildkite-agent meta-data set "main-commit" "$$MAIN_COMMIT"
 
   - label: "Create or update Prefect deployment"
     key: prefect-deploy
@@ -59,7 +59,7 @@ steps:
       PREFECT_API_URL="$(buildkite-agent secret get PREFECT_API_URL)"
       PREFECT_API_KEY="$(buildkite-agent secret get PREFECT_API_KEY)"
 
-      if [ -z "$REGISTRY_IMAGE" ] || [ -z "$PREFECT_API_URL" ] || [ -z "$PREFECT_API_KEY" ]; then
+      if [ -z "$$REGISTRY_IMAGE" ] || [ -z "$$PREFECT_API_URL" ] || [ -z "$$PREFECT_API_KEY" ]; then
         echo "REGISTRY_IMAGE, PREFECT_API_URL, and PREFECT_API_KEY must be configured as Buildkite secrets."
         exit 1
       fi
@@ -67,18 +67,18 @@ steps:
       MAIN_COMMIT="$(buildkite-agent meta-data get "main-commit")"
       git fetch origin main
       DEPLOY_DIR="$(mktemp -d)"
-      git archive --format=tar "$MAIN_COMMIT" | tar -xf - -C "$DEPLOY_DIR"
-      cd "$DEPLOY_DIR"
+      git archive --format=tar "$$MAIN_COMMIT" | tar -xf - -C "$$DEPLOY_DIR"
+      cd "$$DEPLOY_DIR"
 
       curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
-      export PATH="$HOME/.local/bin:$PATH"
+      export PATH="$$HOME/.local/bin:$$PATH"
       uv sync --locked
       export PREFECT_API_URL
       export PREFECT_API_KEY
 
-      DEPLOY_IMAGE="$REGISTRY_IMAGE:$MAIN_COMMIT"
+      DEPLOY_IMAGE="$$REGISTRY_IMAGE:$$MAIN_COMMIT"
       uv run prefect deploy \
         --prefect-file prefect.yaml \
         --name ozbargain-latest-deals \
-        --job-variable "image=$DEPLOY_IMAGE" \
+        --job-variable "image=$$DEPLOY_IMAGE" \
         --job-variable 'volumes=["ozbargain-data:/app/data"]'
