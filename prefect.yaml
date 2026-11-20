@@ -20,6 +20,9 @@ deployments:
           directory: "{{ clone.directory }}"
       - prefect.deployments.steps.set_working_directory:
           directory: "{{ clone.directory }}"
+      - flows.ozbargain.deployment_steps.set_environment_variables:
+          env:
+            WEBHOOK_URL: "{{ prefect.blocks.secret.discord-webhook-url }}"
 
     work_pool:
       name: deals-docker
