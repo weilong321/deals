@@ -37,16 +37,15 @@ steps:
         --username "$$GHCR_USERNAME" \
         --password-stdin
 
-      git archive --format=tar "$$SOURCE_COMMIT" | docker build \
+      set -- \
         --platform linux/amd64 \
-        --tag "$$REGISTRY_IMAGE:$$SOURCE_COMMIT" \
-        -
-
-      docker push "$$REGISTRY_IMAGE:$$SOURCE_COMMIT"
+        --push \
+        --tag "$$REGISTRY_IMAGE:$$SOURCE_COMMIT"
       if [ "$$BUILDKITE_BRANCH" = "main" ]; then
-        docker tag "$$REGISTRY_IMAGE:$$SOURCE_COMMIT" "$$REGISTRY_IMAGE:latest"
-        docker push "$$REGISTRY_IMAGE:latest"
+        set -- "$$@" --tag "$$REGISTRY_IMAGE:latest"
       fi
+
+      git archive --format=tar "$$SOURCE_COMMIT" | docker buildx build "$$@" -
 
   - label: "Create or update Prefect deployment"
     key: prefect-deploy
