@@ -24,6 +24,7 @@ COPY flows ./flows
 COPY parsers ./parsers
 COPY schema ./schema
 COPY data ./data
+COPY prefect.yaml ./prefect.yaml
 
 ENV PATH="/app/.venv/bin:$PATH"
 

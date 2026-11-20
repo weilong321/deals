@@ -8,6 +8,7 @@ deployments:
     description: Fetch the OzBargain feed and notify for unseen entry versions.
     entrypoint: flows/ozbargain/latest_deals.py:deals_flow
     parameters: {}
+    pull: []
 
     work_pool:
       name: deals
