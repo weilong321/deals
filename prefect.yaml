@@ -11,7 +11,7 @@ deployments:
     pull: []
 
     work_pool:
-      name: deals
+      name: deals-docker
       work_queue_name: default
 
     schedules:
