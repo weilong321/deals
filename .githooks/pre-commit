@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if ! command -v uv >/dev/null 2>&1; then
+    echo "uv is required to run pre-commit hooks. Install uv and retry the commit."
+    exit 1
+fi
+
+exec uv run pre-commit run --all-files
