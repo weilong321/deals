@@ -48,7 +48,7 @@ def notify(entries: list[FeedEntry]) -> None:
     logger = get_run_logger()
     webhook = os.environ.get("WEBHOOK_URL")
     for entry in entries:
-        message = f"New OzBargain deal: {entry.title}\n{entry.link}"
+        message = f"**New OzBargain deal: {entry.title}**\n{entry.link}"
         if webhook:
             httpx.post(
                 webhook, json={"content": message}, timeout=10

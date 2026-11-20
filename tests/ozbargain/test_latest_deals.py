@@ -73,7 +73,7 @@ def test_notify_posts_all_entries_from_one_task(monkeypatch):
     assert post.call_args_list == [
         call(
             "https://example.com/webhook",
-            json={"content": f"New OzBargain deal: {entry.title}\n{entry.link}"},
+            json={"content": f"**New OzBargain deal: {entry.title}**\n{entry.link}"},
             timeout=10,
         )
         for entry in entries
