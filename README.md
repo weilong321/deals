@@ -1,2 +1,2 @@
 # deals
-project for creating automated deals finding
+project for scraping, parsing and alerting for ozbargain deals
